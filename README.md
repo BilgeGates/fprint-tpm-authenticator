@@ -29,8 +29,19 @@ Not implemented: clientPIN, U2F/CTAP1, CTAP 2.1 extensions and credential manage
 
 ### Arch Linux (AUR)
 
+The package is in the [AUR](https://aur.archlinux.org/packages/fprint-tpm-authenticator).
+With an AUR helper such as `paru` or `yay`:
+
 ```sh
-paru -S fprint-tpm-authenticator    # or any AUR helper
+paru -S fprint-tpm-authenticator
+```
+
+Without a helper:
+
+```sh
+git clone https://aur.archlinux.org/fprint-tpm-authenticator.git
+cd fprint-tpm-authenticator
+makepkg -si
 ```
 
 ### From source
@@ -58,9 +69,11 @@ systemctl --user enable fptad.service
 Reboot so that the group change applies, then check the installation:
 
 ```sh
-tools/hw-check.sh         # registration, sign-in and wrong-finger rejection
-tools/security-check.sh   # permissions, isolation and hostile input
+fpta-hw-check         # registration, sign-in and wrong-finger rejection
+fpta-security-check   # permissions, isolation and hostile input
 ```
+
+Both need `libfido2`; `fpta-security-check` also needs `python`.
 
 Membership in `tss` gives every program you run access to the TPM. Read
 [SECURITY.md](SECURITY.md) before enabling it.

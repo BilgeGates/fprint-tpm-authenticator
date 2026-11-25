@@ -9,7 +9,8 @@ license=('GPL-3.0-or-later')
 depends=('glibc' 'systemd-libs' 'tpm2-tss' 'libcbor' 'openssl' 'fprintd')
 makedepends=('cmake' 'pkgconf' 'systemd')
 checkdepends=('libfido2' 'swtpm' 'dbus')
-optdepends=('libfido2: command line hardware check')
+optdepends=('libfido2: fpta-hw-check and fpta-security-check'
+            'python: fpta-security-check')
 install=fpta.install
 options=('!debug')
 

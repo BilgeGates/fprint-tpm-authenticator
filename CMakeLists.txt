@@ -86,6 +86,8 @@ install(FILES ${CMAKE_BINARY_DIR}/fpta-broker.service packaging/systemd/fpta-bro
         DESTINATION lib/systemd/system)
 install(FILES ${CMAKE_BINARY_DIR}/fptad.service DESTINATION lib/systemd/user)
 install(FILES packaging/modules-load.conf DESTINATION lib/modules-load.d RENAME fpta.conf)
+install(PROGRAMS tools/hw-check.sh DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME fpta-hw-check)
+install(PROGRAMS tools/security-check.sh DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME fpta-security-check)
 install(FILES man/fptad.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES README.md SECURITY.md CHANGELOG.md docs/ARCHITECTURE.md docs/TESTING.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/fprint-tpm-authenticator)

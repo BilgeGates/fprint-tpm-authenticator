@@ -8,6 +8,6 @@ about: What worked or failed on your machine
 - Browser, version, and packaging (native, Flatpak, Snap):
 - Website used:
 - What happened:
-- Output of `tools/hw-check.sh` (remove user and host names):
+- Output of `fpta-hw-check` (remove user and host names):
 
 Do not attach `~/.local/share/fpta`, credential IDs or fingerprint data.

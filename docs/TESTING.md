@@ -52,11 +52,11 @@ non-executable stack and the stack protector.
 ## On real hardware
 
 ```sh
-tools/hw-check.sh         # registration, sign-in and wrong-finger rejection
-tools/security-check.sh   # permissions, isolation, broker takeover, hostile input
+fpta-hw-check         # registration, sign-in and wrong-finger rejection
+fpta-security-check   # permissions, isolation, broker takeover, hostile input
 ```
 
-`security-check.sh` sends 20,000 hostile HID reports to the live device and checks
+They are installed from `tools/`. `fpta-security-check` sends 20,000 hostile HID reports to the live device and checks
 that the daemon keeps working.
 
 ## Results for 0.1.0
@@ -65,8 +65,8 @@ that the daemon keeps working.
 | --- | --- |
 | Automated tests, with and without sanitizers | Passed |
 | Fuzzing, about 12 million executions | No findings |
-| `tools/hw-check.sh` | 13 / 13 |
-| `tools/security-check.sh` | 17 / 17 |
+| `fpta-hw-check` | 13 / 13 |
+| `fpta-security-check` | 17 / 17 |
 | Brave on webauthn.io: registration, sign-in, cancellation, wrong finger | Passed |
 
 Hardware: HP ProBook 450 G8, ELAN `04f3:0c5e`, Intel TPM 2.0, Arch Linux.
