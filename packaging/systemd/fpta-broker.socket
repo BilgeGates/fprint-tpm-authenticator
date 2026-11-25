@@ -1,0 +1,10 @@
+[Unit]
+Description=fpta broker socket
+
+[Socket]
+ListenSequentialPacket=/run/fpta-broker.sock
+# Anyone may connect; the broker accepts only the active seat user (SO_PEERCRED).
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target

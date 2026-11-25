@@ -1,0 +1,30 @@
+# Maintainer: BilgeGates
+pkgname=fprint-tpm-authenticator
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="FIDO2 security key for Linux browsers using a fingerprint reader and TPM 2.0"
+arch=('x86_64')
+url="@URL@"
+license=('@LICENSE@')
+depends=('glibc' 'systemd-libs' 'tpm2-tss' 'libcbor' 'openssl' 'fprintd')
+makedepends=('cmake' 'pkgconf' 'systemd')
+checkdepends=('libfido2' 'swtpm' 'dbus')
+optdepends=('libfido2: command line hardware check')
+install=fpta.install
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('@SHA256@')
+
+build() {
+    cmake -S "$pkgname-$pkgver" -B build -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=lib
+    cmake --build build
+}
+
+check() {
+    ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

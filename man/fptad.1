@@ -1,0 +1,45 @@
+.TH FPTAD 1 "2026-11-25" "fprint-tpm-authenticator 0.1.0" "User Commands"
+.SH NAME
+fptad \- FIDO2 security key backed by a fingerprint reader and TPM 2.0
+.SH SYNOPSIS
+.B fptad
+[\fB\-\-socket\fR \fIpath\fR | \fB\-\-fd\fR \fIn\fR]
+[\fB\-\-state\-dir\fR \fIdir\fR] [\fB\-\-tcti\fR \fIconf\fR]
+.br
+.B fptad \-\-check
+[\fB\-\-tcti\fR \fIconf\fR]
+.br
+.BR "fptad \-\-version" " | " \-\-help
+.SH DESCRIPTION
+The per-user daemon of a virtual CTAP2 security key. It is normally started by
+the systemd user unit
+.B fptad.service
+and connects to
+.BR fpta\-broker ,
+which owns the virtual HID device. Every registration and sign-in is confirmed
+through
+.BR fprintd (1).
+Signing keys are created by and never leave the TPM.
+.SH OPTIONS
+.TP
+.B \-\-check
+Open the TPM, create the primary key, report the result and exit.
+.TP
+.BI \-\-socket " path"
+Broker socket. Default /run/fpta-broker.sock.
+.TP
+.BI \-\-fd " n"
+Use an inherited SOCK_SEQPACKET descriptor.
+.TP
+.BI \-\-state\-dir " dir"
+Default $XDG_DATA_HOME/fpta or ~/.local/share/fpta.
+.TP
+.BI \-\-tcti " conf"
+TPM transport. Default device:/dev/tpmrm0.
+.SH FILES
+The state directory holds a secret that authenticates credential IDs, the
+signature counter and discoverable credentials. Deleting it destroys every
+passkey and security-key registration made with this authenticator.
+.SH SEE ALSO
+.BR fprintd (1),
+.BR fido2\-token (1)

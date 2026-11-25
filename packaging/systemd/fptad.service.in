@@ -1,0 +1,40 @@
+[Unit]
+Description=fpta fingerprint + TPM security key
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_BINDIR@/fptad
+Restart=on-failure
+RestartSec=5
+# Needs: /dev/tpmrm0 (tss group), the system and session D-Bus sockets, the
+# broker socket and ~/.local/share/fpta. Everything else is hidden or read-only.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=-%h/.local/share
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+LimitCORE=0
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

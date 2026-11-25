@@ -1,0 +1,22 @@
+post_install() {
+    cat <<'MSG'
+==> fpta needs a few steps you decide on (nothing was enabled automatically):
+    1. sudo usermod -aG tss "$USER"   (gives your programs TPM access; see SECURITY.md)
+    2. sudo modprobe uhid
+    3. sudo systemctl enable --now fpta-broker.socket
+    4. systemctl --user enable fptad.service
+    5. reboot
+    Deleting ~/.local/share/fpta destroys all credentials. Keep another sign-in method.
+MSG
+}
+
+post_upgrade() {
+    echo "==> Restart fpta so the new version runs:"
+    echo "    sudo systemctl try-restart fpta-broker.service"
+    echo "    systemctl --user restart fptad.service"
+}
+
+pre_remove() {
+    echo "==> Disable first if enabled: systemctl --user disable --now fptad.service;"
+    echo "    sudo systemctl disable --now fpta-broker.socket"
+}

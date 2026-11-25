@@ -1,0 +1,30 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      matrix:
+        sanitizers: ["OFF", "ON"]
+    steps:
+      - run: pacman -Syu --noconfirm git cmake tpm2-tss libcbor openssl systemd libfido2 swtpm dbus
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DFPTA_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
+      - run: cmake --build build --parallel
+      # swtpm and the tests run as an ordinary user: fptad refuses to run as root.
+      - run: useradd -m ci && chown -R ci build && su ci -c "ctest --test-dir build --output-on-failure"
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: >
+          sudo apt-get update && sudo apt-get install -y cmake pkg-config libtss2-dev
+          libcbor-dev libssl-dev libsystemd-dev libfido2-dev swtpm dbus
+      - run: cmake -S . -B build
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure

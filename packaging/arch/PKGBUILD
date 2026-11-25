@@ -1,0 +1,29 @@
+# Local build from this checkout: cd packaging/arch && makepkg
+# For the AUR, replace with a tagged source archive, checksum, url and license.
+pkgname=fprint-tpm-authenticator
+pkgver=0.1.0
+pkgrel=6
+pkgdesc="FIDO2 security key for Linux browsers using a fingerprint reader and TPM 2.0"
+arch=('x86_64')
+license=('GPL-3.0-or-later')
+depends=('glibc' 'systemd-libs' 'tpm2-tss' 'libcbor' 'openssl' 'fprintd')
+makedepends=('cmake' 'pkgconf' 'systemd')
+checkdepends=('libfido2' 'swtpm' 'dbus')
+optdepends=('libfido2: command line hardware check')
+install=fpta.install
+options=('!debug')
+
+build() {
+    cmake -S "$startdir/../.." -B build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=lib
+    cmake --build build
+}
+
+check() {
+    ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

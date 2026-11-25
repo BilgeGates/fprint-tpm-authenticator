@@ -1,0 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 The fprint-tpm-authenticator authors */
+#ifndef FPTA_VERSION_H
+#define FPTA_VERSION_H
+#define FPTA_VERSION "@PROJECT_VERSION@"
+#endif
