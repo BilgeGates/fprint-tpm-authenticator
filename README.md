@@ -27,22 +27,18 @@ Not implemented: clientPIN, U2F/CTAP1, CTAP 2.1 extensions and credential manage
 
 ## Installation
 
-### Arch Linux (AUR)
+### Arch Linux
 
-The package is in the [AUR](https://aur.archlinux.org/packages/fprint-tpm-authenticator).
-With an AUR helper such as `paru` or `yay`:
-
-```sh
-paru -S fprint-tpm-authenticator
-```
-
-Without a helper:
+Each [release](../../releases/latest) includes `fprint-tpm-authenticator-<version>-aur.tar.gz`
+with the PKGBUILD:
 
 ```sh
-git clone https://aur.archlinux.org/fprint-tpm-authenticator.git
-cd fprint-tpm-authenticator
-makepkg -si
+mkdir fpta && tar -xzf fprint-tpm-authenticator-*-aur.tar.gz -C fpta
+cd fpta && makepkg -si
 ```
+
+The same PKGBUILD will be published in the AUR, after which an AUR helper such as
+`paru` or `yay` installs it with `paru -S fprint-tpm-authenticator`.
 
 ### From source
 
