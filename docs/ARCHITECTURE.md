@@ -17,7 +17,8 @@
    ├── CTAP2          bounded CBOR parsing and authenticator commands
    ├── store          secret, signature counter, discoverable credentials
    ├── TPM signer ──► /dev/tpmrm0 (tpm2-tss ESAPI)
-   └── verifier  ──► system D-Bus ──► fprintd ──► libfprint ──► sensor
+   ├── verifier  ──► system D-Bus ──► fprintd ──► libfprint ──► sensor
+   └── prompt    ──► session D-Bus ──► fpta-prompt (window)
 ```
 
 ## Components
@@ -29,7 +30,8 @@
 | CTAP2 | `src/ctap2.c` | user | `getInfo`, `makeCredential`, `getAssertion`, `getNextAssertion`, credential IDs |
 | Store | `src/store.c` | user | Persistent state in `~/.local/share/fpta` |
 | TPM signer | `src/tpm.c` | user (`tss` group) | Primary key, credential keys, ES256 signatures |
-| Verifier | `src/uv_fprintd.c` | user | Fingerprint verification and the desktop notification |
+| Verifier | `src/uv_fprintd.c` | user | Fingerprint verification; drives the window |
+| Window | `src/prompt/main.cpp` | user | Qt 6 confirmation window, D-Bus activated |
 | Daemon | `src/main.c` | user | Event loop, keepalives, process hardening |
 
 The CTAPHID and CTAP2 layers perform no I/O of their own, so tests can drive them
@@ -60,6 +62,23 @@ The broker holds no keys and parses no CTAP messages.
    aborts the verification and releases the reader.
 4. On a match the TPM signs `SHA-256(authenticatorData || clientDataHash)`.
 5. The signature counter is stored durably before the response is sent.
+
+## Confirmation window
+
+`fpta-prompt` owns `net.fpta.Prompt` on the session bus and is started on demand
+(`fpta-prompt.service`); it exits after a minute without requests.
+
+| Method / signal | Meaning |
+| --- | --- |
+| `Begin(s site, u operation) → u id` | Show the window for a request |
+| `SetState(u id, u state, i attempts_left)` | 0 waiting, 1 not recognized, 2 touch again, 3 recognized, 4 refused |
+| `End(u id)` | Close the window |
+| `Cancelled(u id)` | The user pressed Cancel or Escape |
+
+`fptad` accepts `Cancelled` only from the connection that answered `Begin`, and
+treats it as a refusal. The window cannot approve anything: a match reported by
+`fprintd` is still required. If the window is unavailable, a desktop notification
+is used instead. Site names are rendered as plain text.
 
 ## Keys and credential IDs
 
@@ -102,3 +121,4 @@ lost handles are recovered with one reconnect.
 | --- | --- | --- |
 | `fpta-broker.service` | no capabilities, only `/dev/uhid`, no home, no network, syscall filter | 1.2 |
 | `fptad.service` | read-only system and home except `~/.local/share`, no network, syscall filter, non-dumpable | 1.1 |
+| `fpta-prompt.service` | read-only system and home except `~/.cache`, Unix sockets only | – |

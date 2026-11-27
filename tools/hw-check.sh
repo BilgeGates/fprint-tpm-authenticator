@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2319  # $? reports the preceding test
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Real hardware check: TPM, services, device, then one registration and one
-# sign-in verified by libfido2. Creates a throwaway non-resident credential.
-# No sudo, no system changes.
+# Registration, sign-in and wrong-finger rejection on real hardware.
 set -uo pipefail
 log="$HOME/fpta-hw-check.log"
 
@@ -14,7 +13,6 @@ main() {
         if (( $1 == 0 )); then results+=("✅ $2"); else results+=("❌ $2"); failed=1; fi
     }
     skip() { results+=("⏭  $1 (not run: an earlier step failed)"); failed=1; }
-    # Journal position, so that each step shows only its own reader events.
     mark() {
         journalctl --user-unit fptad -n 0 --show-cursor --no-pager 2>/dev/null |
             sed -n 's/^-- cursor: //p'

@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* Scripted verifier for the test binary only; the RP ID selects the outcome. */
 #include "fpta/uv.h"
 
 #include <poll.h>

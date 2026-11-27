@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-11-27
+
+- Confirmation window `fpta-prompt` (Qt 6): names the site, shows the sensor's
+  progress and attempts left, and cancels the request. A desktop notification
+  remains the fallback.
+- The CTAPHID device version follows the release version.
+
 ## 0.1.0 - 2026-11-25
 
 - CTAPHID and CTAP 2.0 authenticator with TPM 2.0 ES256 keys

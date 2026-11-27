@@ -13,7 +13,6 @@ static bool drop(void *ctx, const uint8_t report[FPTA_REPORT_SIZE])
     return true;
 }
 
-/* Input byte 0 selects the layer: raw HID reports, or a CTAP2 request. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     static fpta_ctap2 *ctap;

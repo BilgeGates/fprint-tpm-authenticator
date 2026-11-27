@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Starts a private bus and points the "system bus" at it. Real fprintd is never used.
 set -euo pipefail
 test_binary=$1
 exec dbus-run-session -- bash -c '

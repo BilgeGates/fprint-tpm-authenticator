@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* fptad: the per-user authenticator daemon. It speaks raw 64-byte CTAPHID
- * reports over one SOCK_SEQPACKET connection (normally to fpta-broker). */
 #include "fpta/ctap2.h"
 #include "fpta/ctaphid.h"
 #include "fpta/version.h"
@@ -56,7 +54,6 @@ static bool send_report(void *ctx, const uint8_t report[FPTA_REPORT_SIZE])
     return !t->dead;
 }
 
-/* Consumes one pending report. Returns false when nothing was available. */
 static bool receive_one(transport *t)
 {
     uint8_t report[FPTA_REPORT_SIZE + 1];
@@ -210,7 +207,6 @@ int main(int argc, char **argv)
             fpta_ctaphid_init(&t.hid, send_report, &t, fpta_ctap2_handle, ctap);
             while (!stopping && !t.dead) {
                 struct pollfd p = {.fd = t.fd, .events = POLLIN};
-                /* Sleep indefinitely unless a partial message needs a timeout. */
                 const int ready = poll(&p, 1, t.hid.assembling ? 100 : -1);
                 if (ready < 0 && errno != EINTR) {
                     break;

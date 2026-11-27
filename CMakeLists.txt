@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.22)
-project(fprint_tpm_authenticator VERSION 0.1.0 LANGUAGES C)
+project(fprint_tpm_authenticator VERSION 0.2.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -8,6 +8,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(FPTA_ENABLE_SANITIZERS "Enable ASan and UBSan for local tests" OFF)
 option(FPTA_ENABLE_FUZZING "Build libFuzzer targets (Clang)" OFF)
+option(FPTA_BUILD_PROMPT "Build the fpta-prompt window (Qt 6)" ON)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -22,7 +23,7 @@ if(FPTA_ENABLE_SANITIZERS)
     add_link_options(-fsanitize=address,undefined)
 endif()
 add_compile_definitions(_GNU_SOURCE)
-add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -Wformat=2 -Werror
+add_compile_options(-Wall -Wextra -Wpedantic -Wshadow $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes> -Wformat=2 -Werror
                     -fstack-protector-strong)
 
 configure_file(include/fpta/version.h.in ${CMAKE_BINARY_DIR}/include/fpta/version.h @ONLY)
@@ -37,12 +38,38 @@ target_link_libraries(fptad PRIVATE fpta_core PkgConfig::SYSTEMD)
 add_executable(fpta-broker src/broker.c)
 target_link_libraries(fpta-broker PRIVATE PkgConfig::SYSTEMD)
 
+if(FPTA_BUILD_PROMPT)
+    enable_language(CXX)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets DBus)
+    add_executable(fpta-prompt src/prompt/main.cpp)
+    set_target_properties(fpta-prompt PROPERTIES AUTOMOC ON)
+    target_compile_definitions(fpta-prompt PRIVATE QT_NO_CAST_FROM_ASCII QT_NO_KEYWORDS)
+    target_link_libraries(fpta-prompt PRIVATE Qt6::Widgets Qt6::DBus)
+    install(TARGETS fpta-prompt DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/fpta)
+    configure_file(packaging/dbus/net.fpta.Prompt.service.in
+                   ${CMAKE_BINARY_DIR}/net.fpta.Prompt.service @ONLY)
+    configure_file(packaging/systemd/fpta-prompt.service.in
+                   ${CMAKE_BINARY_DIR}/fpta-prompt.service @ONLY)
+    install(FILES ${CMAKE_BINARY_DIR}/net.fpta.Prompt.service
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
+    install(FILES ${CMAKE_BINARY_DIR}/fpta-prompt.service DESTINATION lib/systemd/user)
+endif()
+
 if(BUILD_TESTING)
     pkg_check_modules(FIDO2 REQUIRED IMPORTED_TARGET libfido2)
     find_program(SWTPM swtpm)
 
     add_executable(test_ctaphid tests/test_ctaphid.c src/ctaphid.c)
     add_test(NAME ctaphid COMMAND test_ctaphid)
+
+    if(FPTA_BUILD_PROMPT)
+        add_test(NAME prompt_render
+                 COMMAND ${CMAKE_COMMAND} -E env QT_QPA_PLATFORM=offscreen
+                         $<TARGET_FILE:fpta-prompt> --preview 1 ${CMAKE_BINARY_DIR}/prompt-test.png
+                         example.com 1 2)
+    endif()
 
     add_executable(test_uv_fprintd tests/test_uv_fprintd.c src/uv_fprintd.c)
     target_link_libraries(test_uv_fprintd PRIVATE PkgConfig::SYSTEMD)
@@ -55,7 +82,6 @@ if(BUILD_TESTING)
         message(WARNING "dbus-run-session not found: fprintd client test NOT registered")
     endif()
 
-    # The daemon with a scripted verifier. Never installed.
     add_executable(fptad-test src/main.c tests/fake_uv.c)
     target_link_libraries(fptad-test PRIVATE fpta_core)
 

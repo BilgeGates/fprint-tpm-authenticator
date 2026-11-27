@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2319  # $? deliberately reports the preceding test
+# shellcheck disable=SC2319  # $? reports the preceding test
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Checks the installed system against the threat model and attacks the running
-# stack with hostile input. Needs no sudo (one optional step asks for it).
-# Creates no credentials and touches no fingerprint.
+# Permission, isolation and hostile-input checks of an installed system.
 set -uo pipefail
 log="$HOME/fpta-security-check.log"
 
@@ -91,7 +89,6 @@ def recv_all():
         if not r:
             return out
         out.append(os.read(fd, 64))
-# allocate a channel
 send(b"\xff\xff\xff\xff\x86\x00\x08" + b"12345678" + bytes(49))
 time.sleep(0.2)
 replies = recv_all()

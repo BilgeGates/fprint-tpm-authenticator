@@ -14,7 +14,7 @@ struct fpta_tpm {
     char *tcti_conf;
     TSS2_TCTI_CONTEXT *tcti;
     ESYS_CONTEXT *esys;
-    ESYS_TR primary; /* cached: CreatePrimary is the slowest operation */
+    ESYS_TR primary;
 };
 
 static bool check(TSS2_RC rc, const char *what)
@@ -38,7 +38,6 @@ static void disconnect(fpta_tpm *tpm)
 
 static bool create_primary(fpta_tpm *tpm)
 {
-    /* Deterministic: the same owner seed and template yield the same parent. */
     const TPM2B_PUBLIC template = {
         .publicArea = {
             .type = TPM2_ALG_ECC,
@@ -172,7 +171,7 @@ static bool sign_once(fpta_tpm *tpm, const TPM2B_PUBLIC *pub, const TPM2B_PRIVAT
     }
     TPM2B_DIGEST input = {.size = 32};
     memcpy(input.buffer, digest, 32);
-    const TPMT_SIG_SCHEME scheme = {.scheme = TPM2_ALG_NULL}; /* key's ECDSA scheme */
+    const TPMT_SIG_SCHEME scheme = {.scheme = TPM2_ALG_NULL};
     const TPMT_TK_HASHCHECK ticket = {.tag = TPM2_ST_HASHCHECK, .hierarchy = TPM2_RH_NULL};
     TPMT_SIGNATURE *sig = NULL;
     bool ok = check(Esys_Sign(tpm->esys, key, ESYS_TR_PASSWORD, ESYS_TR_NONE,
@@ -194,7 +193,7 @@ static bool sign_once(fpta_tpm *tpm, const TPM2B_PUBLIC *pub, const TPM2B_PRIVAT
     return ok;
 }
 
-/* One reconnect covers handles lost across hibernate or a TPM reset. */
+/* Handles are lost across hibernation or a TPM reset: reconnect once. */
 bool fpta_tpm_create(fpta_tpm *tpm, fpta_tpm_key *key)
 {
     for (int attempt = 0; attempt < 2; attempt++) {

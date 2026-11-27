@@ -11,7 +11,8 @@ and never leave it. It works with passkeys and with security-key second factors.
 - CTAP 2.0 over CTAPHID: `getInfo`, `makeCredential`, `getAssertion`, `getNextAssertion`
 - ES256 keys bound to the TPM (`fixedTPM`, non-exportable)
 - Discoverable credentials (passkeys), up to 100
-- Fingerprint confirmation for each operation, with a notification naming the site
+- A confirmation window for each operation: it names the site, shows the sensor's
+  progress and attempts left, and can cancel the request
 - Cancellation from the browser
 - Privilege separation: a minimal root broker owns `/dev/uhid`, everything else runs
   as the user in a systemd sandbox
@@ -23,7 +24,8 @@ Not implemented: clientPIN, U2F/CTAP1, CTAP 2.1 extensions and credential manage
 - TPM 2.0 (`/dev/tpmrm0`)
 - A fingerprint reader supported by `libfprint`, with an enrolled finger
   (`fprintd-enroll`, then check with `fprintd-verify`)
-- systemd, `tpm2-tss`, `libcbor`, OpenSSL, `fprintd`
+- systemd, `tpm2-tss`, `libcbor`, OpenSSL, `fprintd`, Qt 6 (`-DFPTA_BUILD_PROMPT=OFF`
+  builds without the window and falls back to notifications)
 
 ## Installation
 
@@ -78,7 +80,9 @@ Membership in `tss` gives every program you run access to the TPM. Read
 
 Use any site that supports security keys or passkeys. When the browser asks,
 choose **security key** (not phone or QR code) and touch the fingerprint sensor
-when the notification appears. No physical USB key is needed.
+when the fpta window appears. No physical USB key is needed.
+
+![Confirmation window](docs/prompt.png)
 
 Browsers show a generic security-key or USB icon: Linux browsers have no built-in
 platform authenticator, so fpta is offered as an external key. Sites that accept
@@ -95,7 +99,8 @@ browser ─ hidraw ─ uhid ─ fpta-broker ─ socket ─ fptad ─┬─ TPM 2
   descriptor and relays 64-byte reports. It claims no USB vendor or product ID and
   serves only the user active on the seat.
 - **fptad** implements CTAPHID and CTAP2, signs with the TPM and asks `fprintd` to
-  verify. State lives in `~/.local/share/fpta` and is written atomically.
+  verify. It drives the **fpta-prompt** window over the session bus; the window
+  only displays and cancels, the `fprintd` result alone decides. State lives in `~/.local/share/fpta` and is written atomically.
 - A credential ID contains the TPM-wrapped key and an HMAC over the relying party,
   so IDs from other sites or modified IDs are rejected before the TPM is used.
 

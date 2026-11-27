@@ -24,7 +24,8 @@ cmake --build build-asan && ctest --test-dir build-asan
 | --- | --- |
 | `ctaphid` | Maximum-size fragmentation, invalid sequence, channel and length, busy channel, timeout, cancellation during a request |
 | `e2e_libfido2_swtpm` | The daemon with libfido2 as an independent client and `swtpm` as the TPM. libfido2 verifies every signature. Covers RP binding, modified IDs, exclude lists, silent assertions, passkeys, denial, cancellation, restart persistence, the counter and hostile CBOR |
-| `fprintd_client` | The real D-Bus client against a scripted `fprintd` on a private bus: match, retry, wrong finger, busy reader, cancellation and reader error, and that the reader is always released |
+| `fprintd_client` | The real D-Bus client against a scripted `fprintd` and a scripted window on a private bus: match, retry, wrong finger, busy reader, browser cancellation, Cancel in the window and reader error, with and without the window; the reader is always released |
+| `prompt_render` | Renders the window off-screen |
 
 In the end-to-end test the fingerprint step is scripted by `tests/fake_uv.c`, which is
 linked only into the `fptad-test` binary. That binary is never installed and the
@@ -59,13 +60,13 @@ fpta-security-check   # permissions, isolation, broker takeover, hostile input
 They are installed from `tools/`. `fpta-security-check` sends 20,000 hostile HID reports to the live device and checks
 that the daemon keeps working.
 
-## Results for 0.1.0
+## Results for 0.2.0
 
 | Check | Result |
 | --- | --- |
 | Automated tests, with and without sanitizers | Passed |
 | Fuzzing, about 12 million executions | No findings |
-| `fpta-hw-check` | 13 / 13 |
+| `fpta-hw-check`, with the confirmation window | 13 / 13 |
 | `fpta-security-check` | 17 / 17 |
 | Brave on webauthn.io: registration, sign-in, cancellation, wrong finger | Passed |
 

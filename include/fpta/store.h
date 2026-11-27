@@ -16,7 +16,7 @@
 typedef struct fpta_store fpta_store;
 
 typedef struct {
-    uint32_t seq; /* creation order, newest is largest */
+    uint32_t seq;
     char rp_id[FPTA_RP_ID_MAX + 1];
     uint8_t user_id[FPTA_USER_ID_MAX];
     size_t user_id_len;
@@ -28,15 +28,12 @@ typedef struct {
 
 typedef enum { FPTA_SAVE_OK, FPTA_SAVE_FULL, FPTA_SAVE_ERROR } fpta_save_result;
 
-/* Fails closed when existing state is inconsistent. Holds an exclusive lock. */
 fpta_store *fpta_store_open(const char *dir);
 void fpta_store_close(fpta_store *store);
-const uint8_t *fpta_store_secret(const fpta_store *store); /* 32 bytes */
+const uint8_t *fpta_store_secret(const fpta_store *store);
 /* The new value is durable on disk before it is returned. */
 bool fpta_store_next_counter(fpta_store *store, uint32_t *value);
-/* Replaces an existing entry with the same (rp_id, user_id). */
 fpta_save_result fpta_store_save_rk(fpta_store *store, const fpta_rk *rk);
-/* Fills out[0..cap) newest first and returns the number of entries. */
 size_t fpta_store_find_rk(fpta_store *store, const char *rp_id, fpta_rk *out, size_t cap);
 
 #endif

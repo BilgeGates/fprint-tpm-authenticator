@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* User verification through fprintd, with a desktop prompt naming the site. */
 #include "fpta/uv.h"
 
 #include <errno.h>
@@ -18,9 +17,27 @@
 #define TOTAL_TIMEOUT_MS 30000U
 #define MAX_MISMATCHES 3
 #define POLL_SLICE_MS 50
+#define PROMPT_START_MS 4000U
+
+#define PROMPT_SERVICE "net.fpta.Prompt"
+#define PROMPT_PATH "/net/fpta/Prompt"
+#define PROMPT_IFACE "net.fpta.Prompt1"
+
+enum { PROMPT_WAITING, PROMPT_NO_MATCH, PROMPT_RETRY, PROMPT_MATCHED, PROMPT_FAILED };
 
 typedef struct {
     sd_bus *bus;
+    uint32_t id;
+    char owner[256];
+    sd_bus_slot *cancel_slot;
+    bool cancelled;
+    uint32_t note;
+    char text[384];
+} ui;
+
+typedef struct {
+    sd_bus *bus;
+    ui *ui;
     const fpta_waiter *waiter;
     uint64_t deadline;
     sd_bus_message *reply;
@@ -60,37 +77,60 @@ static int on_status(sd_bus_message *m, void *ctx, sd_bus_error *error)
     return 1;
 }
 
-/* Pumps the bus until *flag is set, staying responsive to CTAPHID_CANCEL and
- * keeping the browser informed through the waiter. */
-static fpta_uv_result wait_for(session *s, const bool *flag)
+static fpta_uv_result pump(session *s, uint64_t deadline)
+{
+    if (s->waiter->tick(s->waiter->ctx)) {
+        return FPTA_UV_CANCELLED;
+    }
+    if (s->ui->cancelled) {
+        return FPTA_UV_DENIED;
+    }
+    if (now_ms() >= deadline) {
+        return FPTA_UV_TIMEOUT;
+    }
+    const int processed = sd_bus_process(s->bus, NULL);
+    if (processed < 0) {
+        return FPTA_UV_UNAVAILABLE;
+    }
+    int user_processed = 0;
+    if (s->ui->bus != NULL && (user_processed = sd_bus_process(s->ui->bus, NULL)) < 0) {
+        s->ui->bus = sd_bus_flush_close_unref(s->ui->bus);
+        s->ui->id = 0;
+    }
+    if (processed > 0 || user_processed > 0) {
+        return FPTA_UV_OK;
+    }
+    struct pollfd fds[3] = {
+        {.fd = sd_bus_get_fd(s->bus), .events = (short)sd_bus_get_events(s->bus)},
+        {.fd = s->waiter->fd, .events = POLLIN},
+        {.fd = -1},
+    };
+    if (s->ui->bus != NULL) {
+        fds[2].fd = sd_bus_get_fd(s->ui->bus);
+        fds[2].events = (short)sd_bus_get_events(s->ui->bus);
+    }
+    if (poll(fds, 3, POLL_SLICE_MS) < 0 && errno != EINTR) {
+        return FPTA_UV_UNAVAILABLE;
+    }
+    return FPTA_UV_OK;
+}
+
+static fpta_uv_result wait_until(session *s, const bool *flag, uint64_t deadline)
 {
     while (!*flag) {
-        if (s->waiter->tick(s->waiter->ctx)) {
-            return FPTA_UV_CANCELLED;
-        }
-        if (now_ms() >= s->deadline) {
-            return FPTA_UV_TIMEOUT;
-        }
-        const int processed = sd_bus_process(s->bus, NULL);
-        if (processed < 0) {
-            return FPTA_UV_UNAVAILABLE;
-        }
-        if (processed > 0) {
-            continue;
-        }
-        struct pollfd fds[2] = {
-            {.fd = sd_bus_get_fd(s->bus), .events = (short)sd_bus_get_events(s->bus)},
-            {.fd = s->waiter->fd, .events = POLLIN},
-        };
-        if (poll(fds, 2, POLL_SLICE_MS) < 0 && errno != EINTR) {
-            return FPTA_UV_UNAVAILABLE;
+        const fpta_uv_result result = pump(s, deadline);
+        if (result != FPTA_UV_OK) {
+            return result;
         }
     }
     return FPTA_UV_OK;
 }
 
-/* Asynchronous so that a slow device open does not stall keepalives.
- * On a D-Bus error the error name is copied to failure. */
+static fpta_uv_result wait_for(session *s, const bool *flag)
+{
+    return wait_until(s, flag, s->deadline);
+}
+
 static fpta_uv_result call(session *s, const char *dest, const char *path, const char *iface,
                            const char *member, const char *arg, sd_bus_message **reply,
                            char failure[96])
@@ -150,16 +190,97 @@ static void notify_close(sd_bus *user, uint32_t id)
     }
 }
 
-/* One Claim ... Release cycle. */
-static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
-                                       const char *prompt)
+static int on_prompt_cancelled(sd_bus_message *m, void *ctx, sd_bus_error *error)
+{
+    (void)error;
+    ui *u = ctx;
+    uint32_t id = 0;
+    if (sd_bus_message_read(m, "u", &id) >= 0 && id != 0 && id == u->id) {
+        u->cancelled = true;
+    }
+    return 1;
+}
+
+typedef struct {
+    sd_bus_message *reply;
+    bool replied;
+} pending;
+
+static int on_prompt_reply(sd_bus_message *m, void *ctx, sd_bus_error *error)
+{
+    (void)error;
+    pending *p = ctx;
+    p->reply = sd_bus_message_ref(m);
+    p->replied = true;
+    return 1;
+}
+
+static void ui_open(session *s, const char *rp_id, fpta_operation op)
+{
+    ui *u = s->ui;
+    if (u->bus == NULL) {
+        u->note = notify(u->bus, 0, u->text);
+        return;
+    }
+    pending p = {0};
+    sd_bus_slot *slot = NULL;
+    if (sd_bus_call_method_async(u->bus, &slot, PROMPT_SERVICE, PROMPT_PATH, PROMPT_IFACE,
+                                 "Begin", on_prompt_reply, &p, "su", rp_id, (uint32_t)op) >= 0 &&
+        wait_until(s, &p.replied, now_ms() + PROMPT_START_MS) == FPTA_UV_OK &&
+        sd_bus_message_get_error(p.reply) == NULL &&
+        sd_bus_message_read(p.reply, "u", &u->id) >= 0 && u->id != 0) {
+        /* Accept Cancelled only from the instance that answered Begin. */
+        const char *sender = sd_bus_message_get_sender(p.reply);
+        (void)snprintf(u->owner, sizeof u->owner, "%s", sender != NULL ? sender : "");
+        if (u->owner[0] == '\0' ||
+            sd_bus_match_signal(u->bus, &u->cancel_slot, u->owner, PROMPT_PATH, PROMPT_IFACE,
+                                "Cancelled", on_prompt_cancelled, u) < 0) {
+            u->id = 0;
+        }
+    } else {
+        u->id = 0;
+    }
+    sd_bus_slot_unref(slot);
+    sd_bus_message_unref(p.reply);
+    if (u->id == 0) {
+        fprintf(stderr, "fpta: prompt window unavailable, using a notification\n");
+        u->note = notify(u->bus, 0, u->text);
+    }
+}
+
+static void ui_state(ui *u, int state, int attempts_left)
+{
+    if (u->id != 0) {
+        (void)sd_bus_call_method_async(u->bus, NULL, u->owner, PROMPT_PATH, PROMPT_IFACE,
+                                       "SetState", NULL, NULL, "uui", u->id, (uint32_t)state,
+                                       (int32_t)attempts_left);
+        (void)sd_bus_flush(u->bus);
+    } else if (state == PROMPT_NO_MATCH) {
+        char body[448];
+        (void)snprintf(body, sizeof body, "Not recognised, %d attempt(s) left. %s",
+                       attempts_left, u->text);
+        u->note = notify(u->bus, u->note, body);
+    }
+}
+
+static void ui_close(ui *u)
+{
+    if (u->id != 0) {
+        (void)sd_bus_call_method(u->bus, u->owner, PROMPT_PATH, PROMPT_IFACE, "End", NULL,
+                                 NULL, "u", u->id);
+    } else {
+        notify_close(u->bus, u->note);
+    }
+    u->cancel_slot = sd_bus_slot_unref(u->cancel_slot);
+}
+
+static fpta_uv_result run_verification(session *s)
 {
     sd_bus_message *reply = NULL;
     sd_bus_slot *match = NULL;
     char failure[96], owner[256], device[256];
     const char *value = NULL;
 
-    /* GetDefaultDevice activates fprintd; then pin everything to its unique name. */
     fpta_uv_result result = call(s, SERVICE, MANAGER_PATH, MANAGER_IFACE, "GetDefaultDevice",
                                  NULL, &reply, failure);
     if (result != FPTA_UV_OK) {
@@ -184,7 +305,6 @@ static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
     (void)snprintf(owner, sizeof owner, "%s", value);
     sd_bus_message_unref(reply);
 
-    /* The lock screen may hold the reader briefly: retry until the deadline. */
     for (;;) {
         result = call(s, owner, device, DEVICE_IFACE, "Claim", "", NULL, failure);
         if (result == FPTA_UV_OK) {
@@ -195,13 +315,10 @@ static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
         }
         const uint64_t retry_at = now_ms() + 250;
         while (now_ms() < retry_at) {
-            if (s->waiter->tick(s->waiter->ctx)) {
-                return FPTA_UV_CANCELLED;
+            result = pump(s, s->deadline);
+            if (result != FPTA_UV_OK) {
+                return result;
             }
-            if (now_ms() >= s->deadline) {
-                return FPTA_UV_TIMEOUT;
-            }
-            (void)poll(&(struct pollfd){.fd = s->waiter->fd, .events = POLLIN}, 1, POLL_SLICE_MS);
         }
     }
 
@@ -210,8 +327,6 @@ static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
                             on_status, s) < 0) {
         result = FPTA_UV_UNAVAILABLE;
     }
-    char retry_prompt[448];
-    const char *shown = prompt;
     for (int mismatches = 0; result == FPTA_UV_OK;) {
         if (!started) {
             s->have_status = false;
@@ -220,40 +335,40 @@ static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
                 break;
             }
             started = true;
-            *note = notify(user, *note, shown);
         }
         result = wait_for(s, &s->have_status);
         if (result != FPTA_UV_OK) {
             break;
         }
         s->have_status = false;
-        /* Outcome only, never identities: makes every attempt auditable. */
         fprintf(stderr, "fpta: fingerprint reader: %s\n", s->status);
         if (strcmp(s->status, "verify-match") == 0 && s->done) {
+            ui_state(s->ui, PROMPT_MATCHED, 0);
             break;
         }
         if (strcmp(s->status, "verify-no-match") == 0) {
             if (++mismatches >= MAX_MISMATCHES) {
+                ui_state(s->ui, PROMPT_FAILED, 0);
                 result = FPTA_UV_DENIED;
                 break;
             }
             (void)sd_bus_call_method(s->bus, owner, device, DEVICE_IFACE, "VerifyStop", NULL,
                                      NULL, "");
             started = false;
-            (void)snprintf(retry_prompt, sizeof retry_prompt,
-                           "Not recognised, %d attempt(s) left. %s",
-                           MAX_MISMATCHES - mismatches, prompt);
-            shown = retry_prompt;
+            ui_state(s->ui, PROMPT_NO_MATCH, MAX_MISMATCHES - mismatches);
         } else if (s->done || (strcmp(s->status, "verify-retry-scan") != 0 &&
                                strcmp(s->status, "verify-swipe-too-short") != 0 &&
                                strcmp(s->status, "verify-finger-not-centered") != 0 &&
                                strcmp(s->status, "verify-remove-and-retry") != 0)) {
             fprintf(stderr, "fpta: verification ended with %s\n", s->status);
+            ui_state(s->ui, PROMPT_FAILED, 0);
             result = FPTA_UV_UNAVAILABLE;
+        } else {
+            ui_state(s->ui, PROMPT_RETRY, 0);
         }
     }
 
-    /* Cleanup is not cancellable: always give the reader back. */
+    /* Always release the reader, also after cancellation. */
     if (started) {
         (void)sd_bus_call_method(s->bus, owner, device, DEVICE_IFACE, "VerifyStop", NULL, NULL, "");
     }
@@ -264,36 +379,40 @@ static fpta_uv_result run_verification(session *s, sd_bus *user, uint32_t *note,
 
 fpta_uv_result fpta_uv_verify(const char *rp_id, fpta_operation op, const fpta_waiter *waiter)
 {
-    session s = {.waiter = waiter, .deadline = now_ms() + TOTAL_TIMEOUT_MS};
-    /* A fresh connection per request: closing it releases any pending claim. */
+    ui u = {0};
+    session s = {.ui = &u, .waiter = waiter, .deadline = now_ms() + TOTAL_TIMEOUT_MS};
+    /* A fresh connection per request: closing it releases a stale claim. */
     if (sd_bus_open_system(&s.bus) < 0) {
         return FPTA_UV_UNAVAILABLE;
     }
-    sd_bus *user = NULL;
-    if (sd_bus_open_user(&user) >= 0) {
-        (void)sd_bus_set_method_call_timeout(user, 1000000);
+    if (sd_bus_open_user(&u.bus) >= 0) {
+        (void)sd_bus_set_method_call_timeout(u.bus, 1000000);
+    } else {
+        u.bus = NULL;
     }
     (void)sd_bus_set_method_call_timeout(s.bus, 5000000);
 
-    /* rp_id is validated printable ASCII; strip the notification markup set. */
-    char safe[254], prompt[384];
+    char safe[254];
     (void)snprintf(safe, sizeof safe, "%s", rp_id);
     for (char *p = safe; *p != '\0'; p++) {
         if (*p == '<' || *p == '>' || *p == '&') {
             *p = '?';
         }
     }
-    (void)snprintf(prompt, sizeof prompt, "%s: %s",
+    (void)snprintf(u.text, sizeof u.text, "%s: %s",
                    op == FPTA_OP_REGISTER ? "Create a passkey for"
                    : op == FPTA_OP_SIGN_IN ? "Sign in to"
                                            : "Select this security key for",
                    safe);
 
-    uint32_t note = 0;
-    const fpta_uv_result result = run_verification(&s, user, &note, prompt);
-    notify_close(user, note);
+    ui_open(&s, rp_id, op);
+    fpta_uv_result result = u.cancelled ? FPTA_UV_DENIED : run_verification(&s);
+    if (result == FPTA_UV_DENIED && u.cancelled) {
+        fprintf(stderr, "fpta: cancelled in the prompt window\n");
+    }
+    ui_close(&u);
     sd_bus_message_unref(s.reply);
-    sd_bus_flush_close_unref(user);
+    sd_bus_flush_close_unref(u.bus);
     sd_bus_close_unref(s.bus);
     return result;
 }

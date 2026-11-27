@@ -18,7 +18,7 @@
 
 #define SECRET_LEN 32U
 #define MAC_LEN 32U
-#define RK_HEADER 12U /* "FPR1" seq(4) rp user name display lengths */
+#define RK_HEADER 12U
 #define RK_FILE_MAX (RK_HEADER + FPTA_RP_ID_MAX + FPTA_USER_ID_MAX + \
                      2 * FPTA_NAME_MAX + FPTA_CRED_ID_MAX + MAC_LEN)
 
@@ -66,7 +66,6 @@ static bool write_atomic(int dir, const char *name, const uint8_t *data, size_t 
     return ok;
 }
 
-/* Returns the file size, -1 if absent, -2 on any other problem. */
 static ssize_t read_file(int dir, const char *name, uint8_t *out, size_t cap)
 {
     const int fd = openat(dir, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
@@ -143,8 +142,7 @@ static bool load_state(fpta_store *store)
         store->counter = get32(counter);
         return true;
     }
-    /* Initialise only a pristine directory. The counter is written first so an
-     * interrupted initialisation leaves a state that can be redone safely. */
+    /* Counter first, so an interrupted initialisation can be repeated. */
     if (secret_len == -1 && rk_directory_empty(store->rk_dir) &&
         (counter_len == -1 || (counter_len == 4 && get32(counter) == 0))) {
         put32(counter, 0);
@@ -236,7 +234,6 @@ static bool rk_file_name(const char *rp_id, const uint8_t *user_id, size_t user_
     return true;
 }
 
-/* header | rp_id | user_id | name | display | credential id (rest) | HMAC */
 static bool rk_parse(const fpta_store *store, const uint8_t *data, size_t len, fpta_rk *rk)
 {
     uint8_t mac[MAC_LEN];
@@ -293,7 +290,6 @@ static size_t rk_encode(const fpta_store *store, const fpta_rk *rk, uint8_t out[
     return rk_mac(store, out, off, out + off) ? off + MAC_LEN : 0;
 }
 
-/* Calls visit for every intact entry; returns the number of files seen. */
 static size_t rk_scan(fpta_store *store, void (*visit)(const fpta_rk *, void *), void *ctx)
 {
     const int fd = openat(store->rk_dir, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);

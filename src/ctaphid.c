@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
 #include "fpta/ctaphid.h"
+#include "fpta/version.h"
 
 #include <string.h>
 
 #define BROADCAST_CID 0xffffffffU
 #define INIT_DATA 57U
 #define CONT_DATA 59U
-#define CAPABILITIES (0x04U | 0x08U) /* CBOR, no U2F MSG */
+#define CAPABILITIES (0x04U | 0x08U)
 
 static void put32(uint8_t *p, uint32_t v)
 {
@@ -90,10 +91,10 @@ static void handle_init(fpta_ctaphid *hid, uint32_t cid, const uint8_t *report,
     uint8_t out[17];
     memcpy(out, report + 7, 8);
     put32(out + 8, assigned);
-    out[12] = 2; /* CTAPHID protocol version */
-    out[13] = 0; /* device version 0.1.0 */
-    out[14] = 1;
-    out[15] = 0;
+    out[12] = 2;
+    out[13] = FPTA_VERSION_MAJOR;
+    out[14] = FPTA_VERSION_MINOR;
+    out[15] = FPTA_VERSION_PATCH;
     out[16] = CAPABILITIES;
     (void)send_message(hid, cid, CTAPHID_INIT, out, sizeof out);
 }
@@ -200,7 +201,7 @@ void fpta_ctaphid_input(fpta_ctaphid *hid, const uint8_t *report, size_t size,
         } else if (hid->assembling && cid == hid->rx_cid) {
             hid->assembling = false;
         }
-        return; /* CANCEL never has its own response */
+        return;
     }
     if (hid->busy || (hid->assembling && cid != hid->rx_cid)) {
         send_error(hid, cid, CTAPHID_ERR_CHANNEL_BUSY);

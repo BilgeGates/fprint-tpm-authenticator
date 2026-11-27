@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Runs the end-to-end test against a private software TPM. No hardware access.
 set -euo pipefail
 swtpm=$1 test_binary=$2 daemon=$3
 work=$(mktemp -d "${TMPDIR:-/tmp}/fpta-e2e.XXXXXX")

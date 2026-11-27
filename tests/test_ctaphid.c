@@ -82,7 +82,7 @@ int main(void)
         sent_count = 0;
     }
 
-    /* Largest legal message: 57 + 128 * 59 bytes, echoed back intact. */
+    /* 57 + 128 * 59 */
     static uint8_t big[FPTA_MAX_MESSAGE];
     for (size_t i = 0; i < sizeof big; i++) {
         big[i] = (uint8_t)(i * 7);
@@ -108,7 +108,7 @@ int main(void)
     expect_error(CTAPHID_ERR_CHANNEL_BUSY);
     fpta_ctaphid_expire(&hid, FPTA_ASSEMBLY_TIMEOUT_MS + 1);
     expect_error(CTAPHID_ERR_MSG_TIMEOUT);
-    frame(1, 0x83, 1, big, 1000); /* U2F MSG is not advertised */
+    frame(1, 0x83, 1, big, 1000);
     expect_error(CTAPHID_ERR_INVALID_CMD);
     frame(1, CTAPHID_CBOR, 0, NULL, 1000);
     expect_error(CTAPHID_ERR_INVALID_LEN);

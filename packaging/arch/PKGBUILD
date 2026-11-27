@@ -1,12 +1,11 @@
-# Local build from this checkout: cd packaging/arch && makepkg
-# For the AUR, replace with a tagged source archive, checksum, url and license.
+# Builds the working tree. Release packages use packaging/aur.
 pkgname=fprint-tpm-authenticator
-pkgver=0.1.0
-pkgrel=6
+pkgver=0.2.0
+pkgrel=1
 pkgdesc="FIDO2 security key for Linux browsers using a fingerprint reader and TPM 2.0"
 arch=('x86_64')
 license=('GPL-3.0-or-later')
-depends=('glibc' 'systemd-libs' 'tpm2-tss' 'libcbor' 'openssl' 'fprintd')
+depends=('glibc' 'systemd-libs' 'tpm2-tss' 'libcbor' 'openssl' 'fprintd' 'qt6-base')
 makedepends=('cmake' 'pkgconf' 'systemd')
 checkdepends=('libfido2' 'swtpm' 'dbus')
 optdepends=('libfido2: fpta-hw-check and fpta-security-check'

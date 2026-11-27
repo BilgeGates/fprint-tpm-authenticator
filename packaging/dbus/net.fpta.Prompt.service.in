@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=net.fpta.Prompt
+Exec=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_LIBEXECDIR@/fpta/fpta-prompt
+SystemdService=fpta-prompt.service

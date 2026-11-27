@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Generates the AUR files (PKGBUILD, .SRCINFO, fpta.install) for a pushed tag.
-# Writes only into the output directory. Publishes nothing.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Generates PKGBUILD, .SRCINFO and fpta.install for a tagged release.
 #   tools/make-aur.sh --url https://github.com/OWNER/REPO --license SPDX-ID \
-#                     --tarball v0.1.0.tar.gz --out DIR
+#                     --tarball v0.2.0.tar.gz --out DIR
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 die() { echo "❌ $*" >&2; exit 1; }
@@ -23,7 +23,6 @@ done
 [[ -f $tarball ]] || die "--tarball: download the release tag archive first"
 [[ -n $out ]] || die "--out is required"
 
-# Release gates.
 [[ -s $root/LICENSE ]] || die "RELEASE BLOCKED: no LICENSE file"
 if grep -q 'BUS_USB' "$root/src/broker.c"; then
     die "RELEASE BLOCKED: the virtual device must not claim a USB vendor/product ID"

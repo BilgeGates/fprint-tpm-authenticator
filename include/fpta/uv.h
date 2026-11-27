@@ -15,15 +15,13 @@ typedef enum {
 
 typedef enum { FPTA_OP_REGISTER, FPTA_OP_SIGN_IN, FPTA_OP_SELECT } fpta_operation;
 
-/* Supplied by the daemon so a blocking verification keeps the transport alive. */
 typedef struct {
-    int fd;                  /* wake-up descriptor for poll() */
-    bool (*tick)(void *ctx); /* returns true when the request must be cancelled */
+    int fd;
+    bool (*tick)(void *ctx);
     void *ctx;
 } fpta_waiter;
 
-/* Link-time backend: fprintd in the daemon, a scripted fake in the test binary.
- * There is deliberately no runtime switch that bypasses verification. */
+/* Provided at link time; there is no runtime switch that skips verification. */
 fpta_uv_result fpta_uv_verify(const char *rp_id, fpta_operation op, const fpta_waiter *waiter);
 
 #endif

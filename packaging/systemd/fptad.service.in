@@ -7,8 +7,6 @@ After=graphical-session.target
 ExecStart=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_BINDIR@/fptad
 Restart=on-failure
 RestartSec=5
-# Needs: /dev/tpmrm0 (tss group), the system and session D-Bus sockets, the
-# broker socket and ~/.local/share/fpta. Everything else is hidden or read-only.
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=-%h/.local/share

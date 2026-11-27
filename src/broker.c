@@ -1,9 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* fpta-broker: the only privileged component. It creates exactly one virtual
- * HID device with a fixed FIDO report descriptor and relays 64-byte reports to
- * the active seat user. Clients never receive the /dev/uhid descriptor, so
- * they cannot create keyboards or other input devices. */
 #include "fpta/version.h"
 
 #include <errno.h>
@@ -22,16 +18,15 @@
 
 #define REPORT 64U
 #define SEAT_CHECK_MS 2000
-/* The device is registered on the virtual bus and claims no USB vendor or
- * product ID. Browsers and libfido2 recognise FIDO devices by the HID usage
- * page in the report descriptor, not by these IDs. */
+/* Virtual bus without a USB ID: clients match the FIDO usage page. */
 #define VENDOR_ID 0x0000
 #define PRODUCT_ID 0x0000
 
+/* Usage page 0xF1D0 (FIDO), 64-byte input and output reports. */
 static const uint8_t FIDO_DESCRIPTOR[] = {
-    0x06, 0xd0, 0xf1, /* usage page: FIDO alliance */
-    0x09, 0x01,       /* usage: U2F HID authenticator */
-    0xa1, 0x01,       /* collection: application */
+    0x06, 0xd0, 0xf1,
+    0x09, 0x01,
+    0xa1, 0x01,
     0x09, 0x20, 0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x40, 0x81, 0x02,
     0x09, 0x21, 0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x40, 0x91, 0x02,
     0xc0};
@@ -85,7 +80,7 @@ static bool device_to_client(int uhid, int client)
     if (event.type == UHID_OUTPUT) {
         const uint8_t *data = event.u.output.data;
         size_t size = event.u.output.size;
-        if (size == REPORT + 1 && data[0] == 0) { /* strip report number 0 */
+        if (size == REPORT + 1 && data[0] == 0) {
             data++;
             size--;
         }
@@ -112,7 +107,7 @@ static bool client_to_device(int client, int uhid)
 {
     uint8_t report[REPORT + 1];
     if (recv(client, report, sizeof report, MSG_DONTWAIT) != (ssize_t)REPORT) {
-        return false; /* closed, error, or a protocol violation */
+        return false;
     }
     struct uhid_event event = {.type = UHID_INPUT2};
     event.u.input2.size = REPORT;
@@ -137,7 +132,7 @@ static void serve(int listener, int client, uid_t uid)
         if (!user_is_active(uid)) {
             break;
         }
-        if (fds[2].revents != 0) { /* one device, one owner */
+        if (fds[2].revents != 0) {
             const int extra = accept4(listener, NULL, NULL, SOCK_CLOEXEC);
             if (extra >= 0) {
                 (void)close(extra);
@@ -150,7 +145,7 @@ static void serve(int listener, int client, uid_t uid)
             break;
         }
     }
-    (void)close(uhid); /* the kernel removes the device */
+    (void)close(uhid);
     fprintf(stderr, "fpta-broker: security key detached\n");
 }
 

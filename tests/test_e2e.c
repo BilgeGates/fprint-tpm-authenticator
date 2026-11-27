@@ -1,8 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* End to end: libfido2 (an independent CTAP client) talks to the real daemon
- * code over its socket transport; keys live in a TPM. libfido2 verifies every
- * signature. Only the fingerprint step is scripted. */
 #undef NDEBUG
 #include <assert.h>
 #include <fido.h>
@@ -144,7 +141,7 @@ static uint32_t sign_with(const char *rp, const fido_cred_t *cred)
     fido_assert_t *a = new_assert(rp, fido_cred_id_ptr(cred), fido_cred_id_len(cred));
     CHECK(fido_dev_get_assert(dev, a, NULL), FIDO_OK);
     verify(a, 0, cred);
-    assert((fido_assert_flags(a, 0) & 0x05) == 0x05); /* UP and UV */
+    assert((fido_assert_flags(a, 0) & 0x05) == 0x05);
     const uint32_t counter = fido_assert_sigcount(a, 0);
     fido_assert_free(&a);
     return counter;
@@ -190,7 +187,6 @@ int main(int argc, char **argv)
     const uint32_t second = sign_with("example.com", plain);
     assert(second > first);
 
-    /* A credential is bound to its RP and cannot be altered. */
     expect_assert("evil.example", fido_cred_id_ptr(plain), fido_cred_id_len(plain),
                   FIDO_ERR_NO_CREDENTIALS);
     unsigned char forged[600];
@@ -204,14 +200,12 @@ int main(int argc, char **argv)
     }
     CHECK(make("example.com", "alice", false, plain, NULL), FIDO_ERR_CREDENTIAL_EXCLUDED);
 
-    /* Silent pre-flight: no presence and no verification flags. */
     fido_assert_t *quiet = new_assert("example.com", fido_cred_id_ptr(plain), id_len);
     CHECK(fido_assert_set_up(quiet, FIDO_OPT_FALSE), FIDO_OK);
     CHECK(fido_dev_get_assert(dev, quiet, NULL), FIDO_OK);
     assert((fido_assert_flags(quiet, 0) & 0x05) == 0);
     fido_assert_free(&quiet);
 
-    /* Passkeys: two accounts, newest first, re-registration replaces. */
     fido_cred_t *bob, *carol, *bob2;
     CHECK(make("passkeys.example", "bob", true, NULL, &bob), FIDO_OK);
     CHECK(make("passkeys.example", "carol", true, NULL, &carol), FIDO_OK);
@@ -227,24 +221,21 @@ int main(int argc, char **argv)
     fido_assert_free(&found);
     expect_assert("nobody.example", NULL, 0, FIDO_ERR_NO_CREDENTIALS);
 
-    /* Failure paths stay closed. */
     CHECK(make("deny.example", "x", false, NULL, NULL), FIDO_ERR_OPERATION_DENIED);
     const struct sigaction action = {.sa_handler = on_alarm};
     assert(sigaction(SIGALRM, &action, NULL) == 0);
     alarm(1);
     CHECK(make("wait.example", "x", false, NULL, NULL), FIDO_ERR_KEEPALIVE_CANCEL);
     CHECK(fido_dev_reset(dev), FIDO_ERR_NOT_ALLOWED);
-    /* Raw hostile requests: huge declared sizes must be refused, not allocated. */
     const struct { unsigned char bytes[12]; size_t len; } hostile[] = {
         {{0x02, 0x9b, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, 10},
         {{0x01, 0xbb, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff}, 10},
         {{0x02, 0x9f, 0xff}, 3},
         {{0x02, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x00}, 12},
-        {{0x02, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62}, 8}}; /* duplicate key 1 */
+        {{0x02, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62}, 8}};
     for (size_t i = 0; i < sizeof hostile / sizeof *hostile; i++) {
         unsigned char report[65] = {0, 0, 0, 0, 0, 0x90, 0, (unsigned char)hostile[i].len};
         unsigned char reply[64];
-        /* allocate a channel of our own */
         unsigned char init[65] = {0, 0xff, 0xff, 0xff, 0xff, 0x86, 0, 8};
         assert(io_write(&channel, init, sizeof init) == 65);
         assert(io_read(&channel, reply, sizeof reply, 2000) == 64);
@@ -252,16 +243,15 @@ int main(int argc, char **argv)
         memcpy(report + 8, hostile[i].bytes, hostile[i].len);
         assert(io_write(&channel, report, sizeof report) == 65);
         assert(io_read(&channel, reply, sizeof reply, 2000) == 64);
-        assert(reply[4] == 0x90 && reply[6] == 1 && reply[7] == 0x12); /* INVALID_CBOR */
+        assert(reply[4] == 0x90 && reply[6] == 1 && reply[7] == 0x12);
     }
     const uint32_t before_restart = sign_with("example.com", plain);
 
-    /* Keys, passkeys and the counter survive a daemon restart. */
     stop();
     start(argv[1], argv[2], argv[3]);
     assert(sign_with("example.com", plain) > before_restart);
     sign_with("passkeys.example", carol);
-    for (int i = 0; i < 25; i++) { /* would exhaust TPM slots if handles leaked */
+    for (int i = 0; i < 25; i++) {
         sign_with("example.com", plain);
     }
     stop();

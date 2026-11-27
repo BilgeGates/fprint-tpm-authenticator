@@ -30,8 +30,6 @@
 
 typedef bool (*fpta_send_fn)(void *ctx, const uint8_t report[FPTA_REPORT_SIZE]);
 
-/* Handles one reassembled CBOR request. Writes at most cap bytes and returns
- * the response length (always >= 1: the CTAP2 status byte). */
 typedef size_t (*fpta_cbor_fn)(void *ctx, uint32_t cid, const uint8_t *request,
                                size_t request_len, uint8_t *response, size_t cap);
 
@@ -42,7 +40,6 @@ typedef struct {
     void *cbor_ctx;
 
     uint32_t next_cid;
-    /* reassembly */
     bool assembling;
     uint32_t rx_cid;
     uint8_t rx_cmd;
@@ -51,18 +48,17 @@ typedef struct {
     size_t rx_got;
     uint64_t rx_deadline_ms;
     uint8_t rx[FPTA_MAX_MESSAGE];
-    /* request currently being executed */
     bool busy;
     uint32_t busy_cid;
     bool cancelled;
-    bool aborted; /* INIT resync: drop the pending response */
+    bool aborted;
     uint8_t request[FPTA_MAX_MESSAGE];
     uint8_t response[FPTA_MAX_MESSAGE];
 } fpta_ctaphid;
 
 void fpta_ctaphid_init(fpta_ctaphid *hid, fpta_send_fn send, void *send_ctx,
                        fpta_cbor_fn cbor, void *cbor_ctx);
-/* Safe to call re-entrantly from inside the cbor handler (for CANCEL). */
+/* Re-entrant from the cbor handler, so CANCEL is seen during a request. */
 void fpta_ctaphid_input(fpta_ctaphid *hid, const uint8_t *report, size_t size,
                         uint64_t now_ms);
 void fpta_ctaphid_expire(fpta_ctaphid *hid, uint64_t now_ms);

@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 The fprint-tpm-authenticator authors */
-/* Deterministic TPM and verifier stand-ins so fuzzing exercises the parsers. */
 #include "fpta/tpm.h"
 #include "fpta/uv.h"
 

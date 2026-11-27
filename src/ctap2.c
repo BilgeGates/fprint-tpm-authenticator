@@ -43,7 +43,6 @@ enum {
 #define NEXT_ASSERTION_MS 30000U
 #define SIG_MAX 80U
 #define AUTH_DATA_MAX (37U + 16U + 2U + FPTA_CRED_ID_MAX + 100U)
-/* version(1) nonce(16) blob_len(2) blob HMAC(32) */
 #define CRED_PREFIX 19U
 #define CRED_MAC 32U
 
@@ -54,7 +53,6 @@ struct fpta_ctap2 {
     fpta_tpm *tpm;
     fpta_store *store;
     const fpta_waiter *waiter;
-    /* getNextAssertion state */
     fpta_rk pending[FPTA_RK_MAX];
     size_t pending_count;
     size_t pending_index;
@@ -72,13 +70,9 @@ static uint64_t now_ms(void)
     return (uint64_t)ts.tv_sec * 1000U + (uint64_t)ts.tv_nsec / 1000000U;
 }
 
-/* ---------- CBOR reading ---------- */
-
 #define CBOR_MAX_DEPTH 8U
 
-/* libcbor allocates containers from their declared size before reading the
- * elements, so bound every size by the bytes that are really there. CTAP2 also
- * forbids tags and indefinite lengths. Advances *off past one item. */
+/* libcbor preallocates containers from declared sizes: bound them by the input. */
 static bool cbor_bounded(const uint8_t *p, size_t len, size_t *off, unsigned depth)
 {
     if (depth > CBOR_MAX_DEPTH || *off >= len) {
@@ -103,7 +97,7 @@ static bool cbor_bounded(const uint8_t *p, size_t len, size_t *off, unsigned dep
     switch (major) {
     case 0:
     case 1:
-    case 7: /* simple values and floats: the argument is already consumed */
+    case 7:
         return true;
     case 2:
     case 3:
@@ -164,10 +158,9 @@ static bool key_equal(const cbor_item_t *a, const cbor_item_t *b)
                memcmp(cbor_bytestring_handle(a), cbor_bytestring_handle(b),
                       cbor_bytestring_length(a)) == 0;
     }
-    return true; /* other key types never occur in CTAP2; treat as clashing */
+    return true;
 }
 
-/* Duplicate map keys make "which value counts" ambiguous: reject them anywhere. */
 static bool no_duplicate_keys(const cbor_item_t *item)
 {
     if (cbor_isa_array(item)) {
@@ -219,7 +212,6 @@ static bool text_equals(const cbor_item_t *item, const char *value)
            memcmp(cbor_string_handle(item), value, strlen(value)) == 0;
 }
 
-/* RP IDs are ASCII domain strings; rejecting the rest also keeps prompts honest. */
 static bool read_rp_id(const cbor_item_t *item, char out[FPTA_RP_ID_MAX + 1])
 {
     if (!is_text(item) || cbor_string_length(item) == 0 ||
@@ -237,7 +229,6 @@ static bool read_rp_id(const cbor_item_t *item, char out[FPTA_RP_ID_MAX + 1])
     return true;
 }
 
-/* Optional display text, truncated on a UTF-8 boundary. */
 static void read_name(const cbor_item_t *item, char out[FPTA_NAME_MAX + 1])
 {
     out[0] = '\0';
@@ -291,9 +282,6 @@ static uint8_t read_options(const cbor_item_t *map, options_t *opt)
     return ST_OK;
 }
 
-/* ---------- CBOR writing ---------- */
-
-/* Takes ownership of both items. */
 static bool put(cbor_item_t *map, cbor_item_t *key, cbor_item_t *value)
 {
     const bool ok = key != NULL && value != NULL &&
@@ -312,7 +300,6 @@ static cbor_item_t *neg(uint8_t encoded) { return cbor_build_negint8(encoded); }
 static cbor_item_t *text(const char *s) { return cbor_build_string(s); }
 static cbor_item_t *blob(const uint8_t *p, size_t n) { return cbor_build_bytestring(p, n); }
 
-/* Takes ownership of item. Returns the encoded size or 0. */
 static size_t serialize(cbor_item_t *item, uint8_t *out, size_t cap)
 {
     const size_t n = cbor_serialize(item, out, cap);
@@ -340,8 +327,6 @@ static size_t status(uint8_t *response, uint8_t code)
     response[0] = code;
     return 1;
 }
-
-/* ---------- credentials and signatures ---------- */
 
 static bool sha256(const void *data, size_t len, uint8_t out[32])
 {
@@ -374,8 +359,6 @@ static size_t cred_wrap(const fpta_ctap2 *ctap, const uint8_t rp_hash[32],
     return cred_mac(ctap, rp_hash, out, body, out + body) ? body + CRED_MAC : 0;
 }
 
-/* Authenticates a credential ID for this RP without touching the TPM, so large
- * allow and exclude lists stay cheap and foreign IDs never reach the chip. */
 static bool cred_open(const fpta_ctap2 *ctap, const uint8_t rp_hash[32], const uint8_t *id,
                       size_t len, const uint8_t **tpm_blob, size_t *tpm_blob_len)
 {
@@ -394,7 +377,6 @@ static bool cred_open(const fpta_ctap2 *ctap, const uint8_t rp_hash[32], const u
     return true;
 }
 
-/* Returns the first descriptor in the list that belongs to this RP. */
 static uint8_t list_match(const fpta_ctap2 *ctap, const cbor_item_t *list,
                           const uint8_t rp_hash[32], const cbor_item_t **match)
 {
@@ -426,7 +408,6 @@ static uint8_t list_match(const fpta_ctap2 *ctap, const cbor_item_t *list,
     return ST_OK;
 }
 
-/* ES256 over authData || clientDataHash, DER encoded. */
 static size_t sign_assertion(fpta_ctap2 *ctap, const uint8_t *tpm_blob, size_t tpm_blob_len,
                              const uint8_t *auth_data, size_t auth_len,
                              const uint8_t cdh[32], uint8_t out[SIG_MAX])
@@ -446,7 +427,7 @@ static size_t sign_assertion(fpta_ctap2 *ctap, const uint8_t *tpm_blob, size_t t
     BIGNUM *br = BN_bin2bn(r, 32, NULL);
     BIGNUM *bs = BN_bin2bn(s, 32, NULL);
     if (sig != NULL && br != NULL && bs != NULL && ECDSA_SIG_set0(sig, br, bs) == 1) {
-        br = bs = NULL; /* owned by sig now */
+        br = bs = NULL;
         const int n = i2d_ECDSA_SIG(sig, NULL);
         if (n > 0 && (size_t)n <= SIG_MAX) {
             uint8_t *p = out;
@@ -484,7 +465,6 @@ static uint8_t verify_user(fpta_ctap2 *ctap, const char *rp_id, fpta_operation o
     }
 }
 
-/* CTAP2.0: an empty pinUvAuthParam asks the user to pick this authenticator. */
 static uint8_t reject_pin_auth(fpta_ctap2 *ctap, const cbor_item_t *param, const char *rp_id)
 {
     if (!is_bytes(param)) {
@@ -496,8 +476,6 @@ static uint8_t reject_pin_auth(fpta_ctap2 *ctap, const cbor_item_t *param, const
     const uint8_t result = verify_user(ctap, rp_id, FPTA_OP_SELECT);
     return result == ST_OK ? ST_PIN_NOT_SET : result;
 }
-
-/* ---------- commands ---------- */
 
 static size_t get_info(uint8_t *response, size_t cap)
 {
@@ -676,7 +654,6 @@ static size_t make_credential(fpta_ctap2 *ctap, const cbor_item_t *req, uint8_t 
         }
     }
 
-    /* "packed" self attestation: signed by the new credential key itself. */
     cbor_item_t *out = cbor_new_definite_map(3);
     cbor_item_t *stmt = cbor_new_definite_map(2);
     bool ok = out != NULL && stmt != NULL && put(stmt, text("alg"), neg(6)) &&
@@ -720,7 +697,7 @@ static size_t assertion_reply(fpta_ctap2 *ctap, const uint8_t *cred_id, size_t c
         cbor_decref(&cred);
     }
     if (ok && user != NULL) {
-        /* Names are only disclosed after the user has been verified. */
+        /* Names only after user verification. */
         const bool names = several && (flags & FLAG_UV) != 0;
         cbor_item_t *entity = cbor_new_definite_map(3);
         ok = entity != NULL &&
@@ -733,7 +710,7 @@ static size_t assertion_reply(fpta_ctap2 *ctap, const uint8_t *cred_id, size_t c
             cbor_decref(&entity);
         }
     }
-    if (ok && count > 1) { /* numberOfCredentials: first reply only */
+    if (ok && count > 1) {
         ok = put(out, u8(5), u8((uint8_t)count));
     }
     return reply_map(out, ok, response, cap);
@@ -865,7 +842,7 @@ size_t fpta_ctap2_handle(void *opaque, uint32_t cid, const uint8_t *request, siz
         return next_assertion(ctap, cid, response, cap);
     }
     if (command == 0x07) {
-        /* Remote reset would let any local client destroy every passkey. */
+        /* A reset over CTAP would let any local client erase every credential. */
         return status(response, ST_NOT_ALLOWED);
     }
     if (command != 0x01 && command != 0x02) {

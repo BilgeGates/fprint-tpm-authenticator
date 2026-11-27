@@ -3,7 +3,7 @@ Description=fpta broker socket
 
 [Socket]
 ListenSequentialPacket=/run/fpta-broker.sock
-# Anyone may connect; the broker accepts only the active seat user (SO_PEERCRED).
+# fpta-broker admits only the user active on a seat.
 SocketMode=0666
 
 [Install]
